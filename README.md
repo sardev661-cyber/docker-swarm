@@ -1,4 +1,31 @@
----
+
+# 🐳 TechRetail — Docker Swarm Deployment
+
+> Trabajo 1: Orquestación de contenedores con Docker Swarm
+> Entorno: WSL2 + Docker Desktop 29.4.1
+
+## 📋 Descripción
+
+Implementación de un clúster **Docker Swarm** de 3 nodos (1 Manager + 2 Workers) para la empresa ficticia **TechRetail**, una plataforma de comercio electrónico que requiere alta disponibilidad y escalabilidad.
+
+Se desplegaron 5 microservicios orquestados con Docker Swarm usando contenedores Docker-in-Docker (DinD) sobre WSL2.
+
+## 🏗️ Arquitectura
+
+    ┌─────────────────────────────────────┐
+    │         Docker Swarm Cluster        │
+    │  ┌────────────┐                     │
+    │  │  MANAGER   │ Leader 172.18.0.2   │
+    │  │  database  │                     │
+    │  │  frontend  │                     │
+    │  │  backend   │                     │
+    │  └────────────┘                     │
+    │  ┌────────────┐  ┌────────────┐     │
+    │  │  WORKER 1  │  │  WORKER 2  │     │
+    │  │ frontend x2│  │ frontend x2│     │
+    │  │  backend   │  │   cache    │     │
+    │  └────────────┘  └────────────┘     │
+    └─────────────────────────────────────┘
 
 ## 🚀 Servicios
 
@@ -10,93 +37,45 @@
 | cache | redis:7-alpine | 1 | - |
 | visualizer | dockersamples/visualizer | 1 | 8080 |
 
----
-
 ## ⚙️ Requisitos
 
 - Docker Desktop 29.x o superior
 - WSL2 (Ubuntu) o Linux
 - 4GB RAM mínimo
 
----
-
 ## 🛠️ Instalación y Despliegue
 
-### 1. Crear la red y los nodos simulados
+**1. Crear la red y los nodos**
 
-```bash
-docker network create --driver bridge swarm-net
+    docker network create --driver bridge swarm-net
+    docker run -d --privileged --name manager --network swarm-net -p 8080:8080 -p 80:80 docker:dind
+    docker run -d --privileged --name worker1 --network swarm-net docker:dind
+    docker run -d --privileged --name worker2 --network swarm-net docker:dind
 
-docker run -d --privileged \
-  --name manager \
-  --network swarm-net \
-  --hostname manager \
-  -p 8080:8080 -p 80:80 \
-  docker:dind
+**2. Inicializar el Swarm**
 
-docker run -d --privileged \
-  --name worker1 \
-  --network swarm-net \
-  --hostname worker1 \
-  docker:dind
+    docker exec -it manager sh
+    ip addr show eth0 | grep "inet " | awk '{print $2}' | cut -d/ -f1
+    docker swarm init --advertise-addr 172.18.0.2
 
-docker run -d --privileged \
-  --name worker2 \
-  --network swarm-net \
-  --hostname worker2 \
-  docker:dind
-```
+**3. Unir los Workers**
 
-### 2. Inicializar el Swarm
+    docker swarm join --token SWMTKN-1-xxxx 172.18.0.2:2377
 
-```bash
-docker exec -it manager sh
-ip addr show eth0 | grep "inet " | awk '{print $2}' | cut -d/ -f1
-docker swarm init --advertise-addr 172.18.0.2
-```
+**4. Crear el Docker Secret**
 
-### 3. Unir los Workers
+    echo "MiPasswordSegura123" | docker secret create db_password -
 
-```bash
-docker exec -it worker1 sh
-docker swarm join --token SWMTKN-1-xxxx 172.18.0.2:2377
+**5. Desplegar el stack**
 
-docker exec -it worker2 sh
-docker swarm join --token SWMTKN-1-xxxx 172.18.0.2:2377
-```
-
-### 4. Verificar el clúster
-
-```bash
-docker node ls
-```
-
-### 5. Crear el Docker Secret
-
-```bash
-echo "MiPasswordSegura123" | docker secret create db_password -
-docker secret ls
-```
-
-### 6. Desplegar el stack
-
-```bash
-docker cp docker-compose.yml manager:/docker-compose.yml
-docker exec -it manager sh
-docker stack deploy -c docker-compose.yml techretail
-docker stack services techretail
-```
-
----
+    docker cp docker-compose.yml manager:/docker-compose.yml
+    docker stack deploy -c docker-compose.yml techretail
+    docker stack services techretail
 
 ## 📈 Escalado Dinámico
 
-```bash
-docker service scale techretail_frontend=5
-docker stack services techretail
-```
-
----
+    docker service scale techretail_frontend=5
+    docker stack services techretail
 
 ## 🌐 Acceso
 
@@ -105,36 +84,17 @@ docker stack services techretail
 | Frontend | http://localhost |
 | Visualizer | http://localhost:8080 |
 
----
-
 ## 🔐 Docker Secrets
 
-```bash
-echo "MiPasswordSegura123" | docker secret create db_password -
-```
-
-Las credenciales se montan en `/run/secrets/db_password` dentro del contenedor.
-
----
+Las credenciales se gestionan como secrets cifrados y se montan en `/run/secrets/db_password` dentro del contenedor.
 
 ## ♻️ Gestión del clúster
 
-```bash
-# Detener nodos
-docker stop manager worker1 worker2
-
-# Reiniciar nodos
-docker start manager worker1 worker2
-
-# Eliminar el stack
-docker stack rm techretail
-
-# Eliminar todo
-docker rm -f manager worker1 worker2
-docker network rm swarm-net
-```
-
----
+    docker stop manager worker1 worker2
+    docker start manager worker1 worker2
+    docker stack rm techretail
+    docker rm -f manager worker1 worker2
+    docker network rm swarm-net
 
 ## 📊 Criterios Cumplidos
 
@@ -147,7 +107,7 @@ docker network rm swarm-net
 | Informe técnico y documentación | 15% | ✅ |
 | Video demostrativo | 10% | ✅ |
 
----
-
 ## 👤 Autor
 Carlos Valeriano Colan
+---
+
